@@ -1,0 +1,7 @@
+edk2-ovmf-stable-bins
+=====================
+
+This repository uses GitHub workflows to build images of EDK2 OVMF
+firmware for QEMU based on the latest EDK2 stable release.
+
+See Releases.

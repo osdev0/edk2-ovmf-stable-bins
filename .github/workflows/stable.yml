@@ -1,0 +1,162 @@
+name: Stable EDK2 OVMF Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'trunk'
+  schedule:
+    - cron: '0 0 * * *'
+
+jobs:
+  check:
+    # On scheduled runs, bail out unless upstream has published a newer stable
+    # than the one our last GitHub release was built from. Push and dispatch
+    # runs skip this job entirely (so manual builds always happen).
+    name: Check for new EDK2 stable
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    outputs:
+      new_version: ${{ steps.check.outputs.new_version }}
+    steps:
+      - name: Compare upstream tag to last release
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          LATEST=$(git ls-remote --tags --refs https://github.com/tianocore/edk2.git 'edk2-stable*' \
+              | awk -F/ '{print $NF}' \
+              | grep -E '^edk2-stable[0-9]{6}$' \
+              | sort -V \
+              | tail -1)
+          if [ -z "$LATEST" ]; then
+              echo "Could not resolve latest edk2 stable tag" >&2
+              exit 1
+          fi
+          LAST_BUILT=""
+          if BODY=$(gh release view --repo "$GITHUB_REPOSITORY" --json body --jq '.body' 2>/dev/null); then
+              LAST_BUILT=$(printf '%s' "$BODY" | grep -oE 'edk2-stable[0-9]{6}' | head -1 || true)
+          fi
+          echo "Upstream latest: $LATEST"
+          echo "Last built:      ${LAST_BUILT:-<none>}"
+          if [ "$LATEST" = "$LAST_BUILT" ]; then
+              echo "No new EDK2 stable; skipping build"
+              echo "new_version=false" >> $GITHUB_OUTPUT
+          else
+              echo "new_version=true" >> $GITHUB_OUTPUT
+          fi
+
+  stable:
+    name: Stable EDK2 OVMF Build
+    needs: [check]
+    if: always() && (github.event_name != 'schedule' || needs.check.outputs.new_version == 'true')
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+
+    steps:
+      - name: Install dependencies
+        run: pacman --noconfirm -Syu && pacman --needed --noconfirm -S base-devel git wget python acpica nasm
+
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Git config
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Rebuild
+        run: |
+          set -ex
+
+          GCC_VERSION=16.1.0
+
+          for i in aarch64 loongarch64 riscv64; do
+              wget https://mirrors.edge.kernel.org/pub/tools/crosstool/files/bin/x86_64/$GCC_VERSION/x86_64-gcc-$GCC_VERSION-nolibc-$i-linux.tar.gz
+              tar -xf x86_64-gcc-$GCC_VERSION-nolibc-$i-linux.tar.gz
+              export PATH="$(pwd -P)"/gcc-$GCC_VERSION-nolibc/$i-linux/bin:"$PATH"
+          done
+
+          # Resolve the newest edk2-stableYYYYMM tag from upstream. The strict
+          # regex filters out rc tags (edk2-stableYYYYMM-rcN) so we never ship
+          # a release candidate as if it were the latest stable.
+          EDK2_STABLE_TAG=$(git ls-remote --tags --refs https://github.com/tianocore/edk2.git 'edk2-stable*' \
+              | awk -F/ '{print $NF}' \
+              | grep -E '^edk2-stable[0-9]{6}$' \
+              | sort -V \
+              | tail -1)
+          if [ -z "$EDK2_STABLE_TAG" ]; then
+              echo "Could not resolve latest edk2 stable tag" >&2
+              exit 1
+          fi
+          echo "Building EDK2 stable tag: $EDK2_STABLE_TAG"
+          echo "EDK2_STABLE_TAG=$EDK2_STABLE_TAG" >> $GITHUB_ENV
+
+          git clone --recursive --depth=1 --branch "$EDK2_STABLE_TAG" https://github.com/tianocore/edk2.git
+
+          ( cd edk2 && patch -p1 <../ovmf.patch )
+
+          export PACKAGES_PATH="$(pwd -P)"/edk2
+
+          export GCC_AARCH64_PREFIX=aarch64-linux-
+          export GCC_LOONGARCH64_PREFIX=loongarch64-linux-
+          export GCC_RISCV64_PREFIX=riscv64-linux-
+
+          set +e
+          . edk2/edksetup.sh
+          set -e
+          make -C edk2/BaseTools
+
+          build -b RELEASE -t GCC -a AARCH64 -p ArmVirtPkg/ArmVirtQemu.dsc
+          build -b RELEASE -t GCC -a LOONGARCH64 -p OvmfPkg/LoongArchVirt/LoongArchVirtQemu.dsc
+          build -b RELEASE -t GCC -a RISCV64 -p OvmfPkg/RiscVVirt/RiscVVirtQemu.dsc
+          build -b RELEASE -t GCC -a X64 -p OvmfPkg/OvmfPkgX64.dsc -D FD_SIZE_2MB
+
+          mkdir -p output
+
+          cp Build/ArmVirtQemu-AArch64/RELEASE_GCC/FV/QEMU_EFI.fd  output/ovmf-code-aarch64.fd
+          cp Build/ArmVirtQemu-AArch64/RELEASE_GCC/FV/QEMU_VARS.fd output/ovmf-vars-aarch64.fd
+
+          cp Build/LoongArchVirtQemu/RELEASE_GCC/FV/QEMU_EFI.fd  output/ovmf-code-loongarch64.fd
+          cp Build/LoongArchVirtQemu/RELEASE_GCC/FV/QEMU_VARS.fd output/ovmf-vars-loongarch64.fd
+
+          cp Build/RiscVVirtQemu/RELEASE_GCC/FV/RISCV_VIRT_CODE.fd output/ovmf-code-riscv64.fd
+          cp Build/RiscVVirtQemu/RELEASE_GCC/FV/RISCV_VIRT_VARS.fd output/ovmf-vars-riscv64.fd
+
+          cp Build/OvmfX64/RELEASE_GCC/FV/OVMF_CODE.fd output/ovmf-code-x86_64.fd
+          cp Build/OvmfX64/RELEASE_GCC/FV/OVMF_VARS.fd output/ovmf-vars-x86_64.fd
+
+          # Support for IA32 was dropped upstream
+          wget -O output/ovmf-code-ia32.fd https://github.com/osdev0/edk2-ovmf-nightly/releases/download/nightly-2025-09-09/ovmf-code-ia32.fd
+          wget -O output/ovmf-vars-ia32.fd https://github.com/osdev0/edk2-ovmf-nightly/releases/download/nightly-2025-09-09/ovmf-vars-ia32.fd
+
+
+      - name: Set TAG_DATE variable
+        run: echo "TAG_DATE=$(date -u +'%Y%m%dT%H%M%SZ')" >> $GITHUB_ENV
+
+      - name: Rename output directory
+        run: mv output edk2-ovmf-bins
+
+      - name: Create release tarball
+        run: |
+          set -e
+          dd if=/dev/zero of=edk2-ovmf-bins/ovmf-code-aarch64.fd bs=1 count=0 seek=67108864
+          dd if=/dev/zero of=edk2-ovmf-bins/ovmf-code-riscv64.fd bs=1 count=0 seek=33554432
+          dd if=/dev/zero of=edk2-ovmf-bins/ovmf-vars-aarch64.fd bs=1 count=0 seek=67108864
+          dd if=/dev/zero of=edk2-ovmf-bins/ovmf-vars-riscv64.fd bs=1 count=0 seek=33554432
+          tar -zcvf edk2-ovmf-bins.tar.gz edk2-ovmf-bins
+          tar -Jcvf edk2-ovmf-bins.tar.xz edk2-ovmf-bins
+
+      - name: Tag new stable release
+        run: git tag $TAG_DATE && git push --tags
+
+      - name: Create stable release
+        uses: softprops/action-gh-release@v3
+        with:
+          name: ${{ env.TAG_DATE }}
+          tag_name: ${{ env.TAG_DATE }}
+          body: Images of EDK2 OVMF based on ${{ env.EDK2_STABLE_TAG }}.
+          files: |
+            edk2-ovmf-bins.tar.gz
+            edk2-ovmf-bins.tar.xz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
