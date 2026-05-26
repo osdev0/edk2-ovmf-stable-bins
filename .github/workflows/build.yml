@@ -47,7 +47,7 @@ jobs:
               echo "new_version=true" >> $GITHUB_OUTPUT
           fi
 
-  stable:
+  build:
     name: Stable EDK2 OVMF Build
     needs: [check]
     if: always() && (github.event_name != 'schedule' || needs.check.outputs.new_version == 'true')
@@ -146,15 +146,15 @@ jobs:
           tar -zcvf edk2-ovmf-bins.tar.gz edk2-ovmf-bins
           tar -Jcvf edk2-ovmf-bins.tar.xz edk2-ovmf-bins
 
-      - name: Tag new stable release
+      - name: Tag new release
         run: git tag $TAG_DATE && git push --tags
 
-      - name: Create stable release
+      - name: Create release
         uses: softprops/action-gh-release@v3
         with:
-          name: ${{ env.TAG_DATE }}
+          name: ${{ env.EDK2_STABLE_TAG }} (${{ env.TAG_DATE }})
           tag_name: ${{ env.TAG_DATE }}
-          body: Images of EDK2 OVMF based on ${{ env.EDK2_STABLE_TAG }}.
+          body: Binary images of EDK2 OVMF of upstream release `${{ env.EDK2_STABLE_TAG }}`.
           files: |
             edk2-ovmf-bins.tar.gz
             edk2-ovmf-bins.tar.xz
