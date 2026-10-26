@@ -5,3 +5,8 @@ This repository uses GitHub workflows to build images of EDK2 OVMF
 firmware for QEMU based on the latest EDK2 stable release.
 
 See Releases.
+
+The ovmf-*-secboot.fd images are built with Secure Boot and TPM 2.0
+support. The x86 ones (x86_64 and ia32) also require SMM, so QEMU must be
+started with
+"-machine q35,smm=on -global driver=cfi.pflash01,property=secure,value=on".

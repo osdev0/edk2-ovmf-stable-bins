@@ -1,21 +1,21 @@
 diff --git a/ArmVirtPkg/ArmVirtCloudHv.dsc b/ArmVirtPkg/ArmVirtCloudHv.dsc
-index 4d9ad6037..706ca2c91 100644
+index d76b17c60..ad3642c43 100644
 --- a/ArmVirtPkg/ArmVirtCloudHv.dsc
 +++ b/ArmVirtPkg/ArmVirtCloudHv.dsc
-@@ -130,7 +130,7 @@
+@@ -147,7 +147,7 @@
    gEfiMdeModulePkgTokenSpaceGuid.PcdSmbiosEntryPointProvideMethod|0x2
  
  [PcdsDynamicDefault.common]
 -  gEfiMdePkgTokenSpaceGuid.PcdPlatformBootTimeOut|3
 +  gEfiMdePkgTokenSpaceGuid.PcdPlatformBootTimeOut|0
  
-   # System Memory Size -- 1 MB initially, actual size will be fetched from DT
-   gArmTokenSpaceGuid.PcdSystemMemorySize|0x00100000
+   ## If TRUE, OvmfPkg/AcpiPlatformDxe will not wait for PCI
+   #  enumeration to complete before installing ACPI tables.
 diff --git a/ArmVirtPkg/ArmVirtKvmTool.dsc b/ArmVirtPkg/ArmVirtKvmTool.dsc
-index 95e639225..456207f05 100644
+index b91a64a0e..d39046de7 100644
 --- a/ArmVirtPkg/ArmVirtKvmTool.dsc
 +++ b/ArmVirtPkg/ArmVirtKvmTool.dsc
-@@ -157,15 +157,15 @@
+@@ -158,7 +158,7 @@
    gEfiMdeModulePkgTokenSpaceGuid.PcdSerialRegisterBase|0x0
  
  [PcdsDynamicHii]
@@ -23,7 +23,8 @@ index 95e639225..456207f05 100644
 +  gEfiMdePkgTokenSpaceGuid.PcdPlatformBootTimeOut|L"Timeout"|gEfiGlobalVariableGuid|0x0|0
  
  [PcdsDynamicDefault.common]
-   #
+   gArmTokenSpaceGuid.PcdArmArchTimerSecIntrNum|0x0
+@@ -189,8 +189,8 @@
    # Set video resolution for boot options and for text setup.
    # PlatformDxe can set the former at runtime.
    #
@@ -35,19 +36,47 @@ index 95e639225..456207f05 100644
    gEfiMdeModulePkgTokenSpaceGuid.PcdSetupVideoVerticalResolution|480
  
 diff --git a/ArmVirtPkg/ArmVirtQemu.dsc b/ArmVirtPkg/ArmVirtQemu.dsc
-index 0f05fda93..a3f8a2d0a 100644
+index 0212be4a3..7da08bf43 100644
 --- a/ArmVirtPkg/ArmVirtQemu.dsc
 +++ b/ArmVirtPkg/ArmVirtQemu.dsc
-@@ -226,7 +226,7 @@
+@@ -44,9 +44,15 @@
+   DEFINE NETWORK_SNP_ENABLE              = FALSE
+   DEFINE NETWORK_TLS_ENABLE              = FALSE
+   DEFINE NETWORK_ALLOW_HTTP_CONNECTIONS  = TRUE
+-  DEFINE NETWORK_ISCSI_ENABLE            = FALSE
++  DEFINE NETWORK_ISCSI_ENABLE            = TRUE
++  DEFINE NETWORK_ISCSI_DEFAULT_ENABLE    = FALSE
+   DEFINE NETWORK_PXE_BOOT_ENABLE         = TRUE
+ 
++  #
++  # Device drivers
++  #
++!include OvmfPkg/Include/Dsc/OvmfOptHwDefines.dsc.inc
++
+ # This comes at the beginning of includes to pick all relevant defines early on.
+ !include ArmVirtPkg/ArmVirtStackCookies.dsc.inc
+ 
+@@ -141,6 +147,10 @@
+ 
+   gEfiMdeModulePkgTokenSpaceGuid.PcdTurnOffUsbLegacySupport|TRUE
+ 
++!if $(SECURE_BOOT_ENABLE) == TRUE
++  gEfiMdeModulePkgTokenSpaceGuid.PcdRequireSelfSignedPk|FALSE
++!endif
++
+   gArmVirtTokenSpaceGuid.PcdTpm2SupportEnabled|$(TPM2_ENABLE)
+ 
+ !if $(QEMU_PV_VARS) == TRUE
+@@ -243,7 +253,7 @@
    gEfiMdeModulePkgTokenSpaceGuid.PcdSmbiosEntryPointProvideMethod|0x2
  
  [PcdsDynamicDefault.common]
 -  gEfiMdePkgTokenSpaceGuid.PcdPlatformBootTimeOut|3
 +  gEfiMdePkgTokenSpaceGuid.PcdPlatformBootTimeOut|0
  
-   ## PL031 RealTimeClock
-   gArmPlatformTokenSpaceGuid.PcdPL031RtcBase|0x0
-@@ -264,7 +264,7 @@
+   gEfiMdeModulePkgTokenSpaceGuid.PcdFlashNvStorageFtwSpareBase     | 0
+   gEfiMdeModulePkgTokenSpaceGuid.PcdFlashNvStorageFtwSpareBase64   | 0
+@@ -311,7 +321,7 @@
    gEfiSecurityPkgTokenSpaceGuid.PcdTpm2AcpiTableRev|L"TCG2_VERSION"|gTcg2ConfigFormSetGuid|0x8|3|NV,BS
  !endif
  
@@ -56,20 +85,126 @@ index 0f05fda93..a3f8a2d0a 100644
  
  [LibraryClasses.common.PEI_CORE, LibraryClasses.common.PEIM]
  !if $(TPM2_ENABLE) == TRUE
+@@ -385,6 +395,7 @@
+   #
+   # Architectural Protocols
+   #
++  MdeModulePkg/Universal/EbcDxe/EbcDxe.inf
+ !if $(QEMU_PV_VARS) == TRUE
+   OvmfPkg/VirtMmCommunicationDxe/VirtMmCommunication.inf
+   MdeModulePkg/Universal/Variable/RuntimeDxe/VariableSmmRuntimeDxe.inf
+@@ -452,10 +463,20 @@
+ !include NetworkPkg/NetworkComponents.dsc.inc
+ !include OvmfPkg/Include/Dsc/NetworkComponents.dsc.inc
+ 
++  #
++  # SATA
++  #
++  MdeModulePkg/Bus/Pci/SataControllerDxe/SataControllerDxe.inf
++  MdeModulePkg/Bus/Ata/AtaBusDxe/AtaBusDxe.inf
++  MdeModulePkg/Bus/Ata/AtaAtapiPassThru/AtaAtapiPassThru.inf
++
++!include OvmfPkg/Include/Dsc/OvmfOptHwComponents.dsc.inc
++
+   #
+   # NVME Driver
+   #
+   MdeModulePkg/Bus/Pci/NvmExpressDxe/NvmExpressDxe.inf
++  MdeModulePkg/Bus/Pci/CxlDxe/CxlDxe.inf
+ 
+   #
+   # SMBIOS Support
+@@ -503,6 +524,7 @@
+ !if $(TPM2_CONFIG_ENABLE) == TRUE
+   SecurityPkg/Tcg/Tcg2Config/Tcg2ConfigDxe.inf
+ !endif
++  MdeModulePkg/Universal/SmbiosMeasurementDxe/SmbiosMeasurementDxe.inf
+ !endif
+ 
+   #
+diff --git a/ArmVirtPkg/ArmVirtQemuFvMain.fdf.inc b/ArmVirtPkg/ArmVirtQemuFvMain.fdf.inc
+index ad158f57f..03915f63b 100644
+--- a/ArmVirtPkg/ArmVirtQemuFvMain.fdf.inc
++++ b/ArmVirtPkg/ArmVirtQemuFvMain.fdf.inc
+@@ -50,6 +50,7 @@ READ_LOCK_STATUS   = TRUE
+   INF ArmPkg/Drivers/CpuDxe/CpuDxe.inf
+   INF MdeModulePkg/Core/RuntimeDxe/RuntimeDxe.inf
+   INF MdeModulePkg/Universal/SecurityStubDxe/SecurityStubDxe.inf
++  INF MdeModulePkg/Universal/EbcDxe/EbcDxe.inf
+   INF MdeModulePkg/Universal/CapsuleRuntimeDxe/CapsuleRuntimeDxe.inf
+   INF MdeModulePkg/Universal/FaultTolerantWriteDxe/FaultTolerantWriteDxe.inf
+ !if $(QEMU_PV_VARS) == TRUE
+@@ -107,6 +108,7 @@ READ_LOCK_STATUS   = TRUE
+   INF OvmfPkg/VirtioScsiDxe/VirtioScsi.inf
+   INF OvmfPkg/VirtioRngDxe/VirtioRng.inf
+   INF OvmfPkg/VirtioSerialDxe/VirtioSerial.inf
++  INF OvmfPkg/VirtioInputDxe/VirtioInput.inf
+ 
+ !include OvmfPkg/Include/Fdf/ShellDxe.fdf.inc
+ 
+@@ -134,10 +136,20 @@ READ_LOCK_STATUS   = TRUE
+   INF MdeModulePkg/Bus/Scsi/ScsiBusDxe/ScsiBusDxe.inf
+   INF MdeModulePkg/Bus/Scsi/ScsiDiskDxe/ScsiDiskDxe.inf
+ 
++  #
++  # SATA
++  #
++  INF MdeModulePkg/Bus/Pci/SataControllerDxe/SataControllerDxe.inf
++  INF MdeModulePkg/Bus/Ata/AtaBusDxe/AtaBusDxe.inf
++  INF MdeModulePkg/Bus/Ata/AtaAtapiPassThru/AtaAtapiPassThru.inf
++
++!include OvmfPkg/Include/Fdf/OvmfOptHw.fdf.inc
++
+   #
+   # NVME Driver
+   #
+   INF MdeModulePkg/Bus/Pci/NvmExpressDxe/NvmExpressDxe.inf
++  INF MdeModulePkg/Bus/Pci/CxlDxe/CxlDxe.inf
+ 
+   #
+   # SMBIOS Support
+@@ -178,6 +190,7 @@ READ_LOCK_STATUS   = TRUE
+   INF MdeModulePkg/Bus/Pci/XhciDxe/XhciDxe.inf
+   INF MdeModulePkg/Bus/Usb/UsbBusDxe/UsbBusDxe.inf
+   INF MdeModulePkg/Bus/Usb/UsbKbDxe/UsbKbDxe.inf
++  INF MdeModulePkg/Bus/Usb/UsbMouseDxe/UsbMouseDxe.inf
+   INF MdeModulePkg/Bus/Usb/UsbMassStorageDxe/UsbMassStorageDxe.inf
+ 
+   #
+@@ -190,6 +203,7 @@ READ_LOCK_STATUS   = TRUE
+   #
+ !if $(TPM2_ENABLE) == TRUE
+   INF SecurityPkg/Tcg/Tcg2Dxe/Tcg2Dxe.inf
++  INF MdeModulePkg/Universal/SmbiosMeasurementDxe/SmbiosMeasurementDxe.inf
+ !if $(TPM2_CONFIG_ENABLE) == TRUE
+   INF SecurityPkg/Tcg/Tcg2Config/Tcg2ConfigDxe.inf
+ !endif
 diff --git a/ArmVirtPkg/ArmVirtQemuKernel.dsc b/ArmVirtPkg/ArmVirtQemuKernel.dsc
-index e1020f21a..9944c678c 100644
+index 7fdb3b55b..982ce0187 100644
 --- a/ArmVirtPkg/ArmVirtQemuKernel.dsc
 +++ b/ArmVirtPkg/ArmVirtQemuKernel.dsc
-@@ -184,7 +184,7 @@
+@@ -43,6 +43,11 @@
+   DEFINE NETWORK_ISCSI_ENABLE            = FALSE
+   DEFINE NETWORK_PXE_BOOT_ENABLE         = TRUE
+ 
++  #
++  # Device drivers
++  #
++!include OvmfPkg/Include/Dsc/OvmfOptHwDefines.dsc.inc
++
+ # This comes at the beginning of includes to pick all relevant defines early on.
+ !include ArmVirtPkg/ArmVirtStackCookies.dsc.inc
+ 
+@@ -201,7 +206,7 @@
    gArmTokenSpaceGuid.PcdFvBaseAddress|0x0
  
  [PcdsDynamicDefault.common]
 -  gEfiMdePkgTokenSpaceGuid.PcdPlatformBootTimeOut|3
 +  gEfiMdePkgTokenSpaceGuid.PcdPlatformBootTimeOut|0
  
-   ## PL031 RealTimeClock
-   gArmPlatformTokenSpaceGuid.PcdPL031RtcBase|0x0
-@@ -193,8 +193,8 @@
+   gEfiMdeModulePkgTokenSpaceGuid.PcdFlashNvStorageFtwSpareBase     | 0
+   gEfiMdeModulePkgTokenSpaceGuid.PcdFlashNvStorageFtwSpareBase64   | 0
+@@ -240,8 +245,8 @@
    # Set video resolution for boot options and for text setup.
    # PlatformDxe can set the former at runtime.
    #
@@ -80,19 +215,136 @@ index e1020f21a..9944c678c 100644
    gEfiMdeModulePkgTokenSpaceGuid.PcdSetupVideoHorizontalResolution|640
    gEfiMdeModulePkgTokenSpaceGuid.PcdSetupVideoVerticalResolution|480
    gEfiMdeModulePkgTokenSpaceGuid.PcdConOutRow|0
+@@ -278,6 +283,7 @@
+   #
+   # Architectural Protocols
+   #
++  MdeModulePkg/Universal/EbcDxe/EbcDxe.inf
+ !if $(QEMU_PV_VARS) == TRUE
+   OvmfPkg/VirtMmCommunicationDxe/VirtMmCommunication.inf
+   MdeModulePkg/Universal/Variable/RuntimeDxe/VariableSmmRuntimeDxe.inf
+@@ -325,6 +331,7 @@
+   # Platform Driver
+   #
+   OvmfPkg/VirtioSerialDxe/VirtioSerial.inf
++  OvmfPkg/VirtioInputDxe/VirtioInput.inf
+ 
+   MdeModulePkg/Application/BootManagerMenuApp/BootManagerMenuApp.inf
+   OvmfPkg/QemuKernelLoaderFsDxe/QemuKernelLoaderFsDxe.inf {
+@@ -338,10 +345,20 @@
+ !include NetworkPkg/NetworkComponents.dsc.inc
+ !include OvmfPkg/Include/Dsc/NetworkComponents.dsc.inc
+ 
++  #
++  # SATA
++  #
++  MdeModulePkg/Bus/Pci/SataControllerDxe/SataControllerDxe.inf
++  MdeModulePkg/Bus/Ata/AtaBusDxe/AtaBusDxe.inf
++  MdeModulePkg/Bus/Ata/AtaAtapiPassThru/AtaAtapiPassThru.inf
++
++!include OvmfPkg/Include/Dsc/OvmfOptHwComponents.dsc.inc
++
+   #
+   # NVME Driver
+   #
+   MdeModulePkg/Bus/Pci/NvmExpressDxe/NvmExpressDxe.inf
++  MdeModulePkg/Bus/Pci/CxlDxe/CxlDxe.inf
+ 
+   #
+   # SMBIOS Support
 diff --git a/ArmVirtPkg/ArmVirtXen.dsc b/ArmVirtPkg/ArmVirtXen.dsc
-index 0b7574485..91cceb889 100644
+index bff4dfd65..e233842ef 100644
 --- a/ArmVirtPkg/ArmVirtXen.dsc
 +++ b/ArmVirtPkg/ArmVirtXen.dsc
-@@ -92,7 +92,7 @@
-   gArmTokenSpaceGuid.PcdFvBaseAddress|0x0
+@@ -117,7 +117,7 @@
+   gArmTokenSpaceGuid.PcdGicRedistributorsBase|0x0
+   gArmTokenSpaceGuid.PcdGicInterruptInterfaceBase|0x0
  
- [PcdsDynamicDefault.common]
 -  gEfiMdePkgTokenSpaceGuid.PcdPlatformBootTimeOut|3
 +  gEfiMdePkgTokenSpaceGuid.PcdPlatformBootTimeOut|0
  
  ################################################################################
  #
+diff --git a/ArmVirtPkg/Library/PlatformPeiLib/PlatformPeiLib.c b/ArmVirtPkg/Library/PlatformPeiLib/PlatformPeiLib.c
+index e039810dc..e2c00c10b 100644
+--- a/ArmVirtPkg/Library/PlatformPeiLib/PlatformPeiLib.c
++++ b/ArmVirtPkg/Library/PlatformPeiLib/PlatformPeiLib.c
+@@ -8,7 +8,9 @@
+ **/
+ 
+ #include <PiPei.h>
++#include <Uefi/UefiSpec.h>
+ 
++#include <Library/ArmMmuLib.h>
+ #include <Library/BaseLib.h>
+ #include <Library/BaseMemoryLib.h>
+ #include <Library/MemoryAllocationLib.h>
+@@ -107,6 +109,8 @@ PlatformPeim (
+   CONST UINT64              *RegProp;
+   CONST UINT32              *RangesProp;
+   UINT64                    TpmBase;
++  UINT64                    TpmSize;
++  UINT64                    MappingBase;
+   EFI_STATUS                Status;
+   CHAR8                     DebugLevelBuf[32];
+   UINTN                     DebugLevelBufSize;
+@@ -197,6 +201,7 @@ PlatformPeim (
+                                  );
+ 
+   TpmBase = 0;
++  TpmSize = 0;
+ 
+   //
+   // Set Parent to suppress incorrect compiler/analyzer warnings.
+@@ -228,8 +233,10 @@ PlatformPeim (
+         ASSERT (Len == 8 || Len == 16);
+         if (Len == 8) {
+           TpmBase = Fdt32ToCpu (RegProp[0]);
++          TpmSize = Fdt32ToCpu (((CONST UINT32 *)RegProp)[1]);
+         } else if (Len == 16) {
+           TpmBase = Fdt64ToCpu (ReadUnaligned64 ((UINT64 *)RegProp));
++          TpmSize = Fdt64ToCpu (ReadUnaligned64 ((UINT64 *)RegProp + 1));
+         }
+ 
+         if (Depth > 1) {
+@@ -283,6 +290,19 @@ PlatformPeim (
+     if (TpmBase != 0) {
+       DEBUG ((DEBUG_INFO, "%a: TPM @ 0x%lx\n", __func__, TpmBase));
+ 
++      //
++      // The initial memory map does not cover the TPM, so map it before
++      // Tcg2ConfigPei probes it. DXE inherits the mapping.
++      //
++      MappingBase = TpmBase & ~(UINT64)EFI_PAGE_MASK;
++      Status      = ArmSetMemoryAttributes (
++                      MappingBase,
++                      ALIGN_VALUE (TpmBase + TpmSize - MappingBase, EFI_PAGE_SIZE),
++                      EFI_MEMORY_UC,
++                      0
++                      );
++      ASSERT_EFI_ERROR (Status);
++
+       Status = (EFI_STATUS)PcdSet64S (PcdTpmBaseAddress, TpmBase);
+       ASSERT_EFI_ERROR (Status);
+ 
+diff --git a/ArmVirtPkg/Library/PlatformPeiLib/PlatformPeiLib.inf b/ArmVirtPkg/Library/PlatformPeiLib/PlatformPeiLib.inf
+index 731d94033..8710a0071 100644
+--- a/ArmVirtPkg/Library/PlatformPeiLib/PlatformPeiLib.inf
++++ b/ArmVirtPkg/Library/PlatformPeiLib/PlatformPeiLib.inf
+@@ -25,11 +25,13 @@
+   MdePkg/MdePkg.dec
+   OvmfPkg/OvmfPkg.dec
+   SecurityPkg/SecurityPkg.dec
++  UefiCpuPkg/UefiCpuPkg.dec
+ 
+ [FeaturePcd]
+   gArmVirtTokenSpaceGuid.PcdTpm2SupportEnabled
+ 
+ [LibraryClasses]
++  ArmMmuLib
+   BaseLib
+   BaseMemoryLib
+   DebugLib
 diff --git a/EmulatorPkg/EmulatorPkg.dsc b/EmulatorPkg/EmulatorPkg.dsc
 index 7766d5d56..2c9b91e1a 100644
 --- a/EmulatorPkg/EmulatorPkg.dsc
@@ -136,6 +388,45 @@ index ecd22b0bd..19b806210 100644
    gEfiMdeModulePkgTokenSpaceGuid.PcdSetupVideoHorizontalResolution|1280
    gEfiMdeModulePkgTokenSpaceGuid.PcdSetupVideoVerticalResolution|800
    gEfiMdeModulePkgTokenSpaceGuid.PcdConOutRow|0
+diff --git a/OvmfPkg/Include/Dsc/ShellComponents.dsc.inc b/OvmfPkg/Include/Dsc/ShellComponents.dsc.inc
+index e8f4f42b3..33a05acf1 100644
+--- a/OvmfPkg/Include/Dsc/ShellComponents.dsc.inc
++++ b/OvmfPkg/Include/Dsc/ShellComponents.dsc.inc
+@@ -5,6 +5,10 @@
+ !if $(BUILD_SHELL) == TRUE
+ 
+ !if $(TOOL_CHAIN_TAG) != "XCODE5"
++  ShellPkg/DynamicCommand/DpDynamicCommand/DpDynamicCommand.inf {
++    <PcdsFixedAtBuild>
++      gEfiShellPkgTokenSpaceGuid.PcdShellLibAutoInitialize|FALSE
++  }
+ !if $(NETWORK_ENABLE) == TRUE
+   ShellPkg/DynamicCommand/TftpDynamicCommand/TftpDynamicCommand.inf {
+     <PcdsFixedAtBuild>
+diff --git a/OvmfPkg/Include/Dsc/UsbComponents.dsc.inc b/OvmfPkg/Include/Dsc/UsbComponents.dsc.inc
+index 69dd388c0..6cdf6d7e0 100644
+--- a/OvmfPkg/Include/Dsc/UsbComponents.dsc.inc
++++ b/OvmfPkg/Include/Dsc/UsbComponents.dsc.inc
+@@ -9,6 +9,7 @@
+   MdeModulePkg/Bus/Pci/XhciDxe/XhciDxe.inf
+   MdeModulePkg/Bus/Usb/UsbBusDxe/UsbBusDxe.inf
+   MdeModulePkg/Bus/Usb/UsbKbDxe/UsbKbDxe.inf
++  MdeModulePkg/Bus/Usb/UsbMouseDxe/UsbMouseDxe.inf
+   MdeModulePkg/Bus/Usb/UsbMassStorageDxe/UsbMassStorageDxe.inf {
+     <LibraryClasses>
+       UefiDriverEntryPoint|OvmfPkg/Library/UefiDriverEntryPointFwCfgOverrideLib/UefiDriverEntryPointFwCfgOverrideLib.inf
+diff --git a/OvmfPkg/Include/Fdf/ShellDxe.fdf.inc b/OvmfPkg/Include/Fdf/ShellDxe.fdf.inc
+index eef89be88..6d6e58a0c 100644
+--- a/OvmfPkg/Include/Fdf/ShellDxe.fdf.inc
++++ b/OvmfPkg/Include/Fdf/ShellDxe.fdf.inc
+@@ -9,6 +9,7 @@
+ !if $(BUILD_SHELL) == TRUE && $(SECURE_BOOT_ENABLE) == FALSE
+ 
+ !if $(TOOL_CHAIN_TAG) != "XCODE5"
++INF  ShellPkg/DynamicCommand/DpDynamicCommand/DpDynamicCommand.inf
+ !if $(NETWORK_ENABLE) == TRUE
+ INF  ShellPkg/DynamicCommand/TftpDynamicCommand/TftpDynamicCommand.inf
+ INF  ShellPkg/DynamicCommand/HttpDynamicCommand/HttpDynamicCommand.inf
 diff --git a/OvmfPkg/IntelTdx/IntelTdxX64.dsc b/OvmfPkg/IntelTdx/IntelTdxX64.dsc
 index be2ddacaa..118fc7856 100644
 --- a/OvmfPkg/IntelTdx/IntelTdxX64.dsc
@@ -151,24 +442,212 @@ index be2ddacaa..118fc7856 100644
    gEfiMdeModulePkgTokenSpaceGuid.PcdAcpiS3Enable|FALSE
    gUefiOvmfPkgTokenSpaceGuid.PcdOvmfHostBridgePciDevId|0
    gUefiOvmfPkgTokenSpaceGuid.PcdPciIoBase|0x0
+diff --git a/OvmfPkg/Library/PlatformBootManagerLibLight/PlatformBm.c b/OvmfPkg/Library/PlatformBootManagerLibLight/PlatformBm.c
+index 2c24c6548..5040ad7e2 100644
+--- a/OvmfPkg/Library/PlatformBootManagerLibLight/PlatformBm.c
++++ b/OvmfPkg/Library/PlatformBootManagerLibLight/PlatformBm.c
+@@ -13,6 +13,7 @@
+ #include <IndustryStandard/Virtio095.h>
+ #include <Library/BootLogoLib.h>
+ #include <Library/DevicePathLib.h>
++#include <Library/DxeServicesTableLib.h>
+ #include <Library/PcdLib.h>
+ #include <Library/PlatformBmPrintScLib.h>
+ #include <Library/QemuBootOrderLib.h>
+@@ -328,6 +329,21 @@ IsVirtioSerial (
+   return IsVirtio (Handle, ReportText, VIRTIO_SUBSYSTEM_CONSOLE);
+ }
+ 
++/**
++  This FILTER_FUNCTION checks if a handle corresponds to a Virtio input device at
++  the VIRTIO_DEVICE_PROTOCOL level.
++**/
++STATIC
++BOOLEAN
++EFIAPI
++IsVirtioInput (
++  IN EFI_HANDLE    Handle,
++  IN CONST CHAR16  *ReportText
++  )
++{
++  return IsVirtio (Handle, ReportText, VIRTIO_SUBSYSTEM_INPUT);
++}
++
+ /**
+   This function checks if a handle corresponds to the Virtio Device ID given
+   at the EFI_PCI_IO_PROTOCOL level.
+@@ -477,6 +493,21 @@ IsVirtioPciSerial (
+   return IsVirtioPci (Handle, ReportText, VIRTIO_SUBSYSTEM_CONSOLE);
+ }
+ 
++/**
++  This FILTER_FUNCTION checks if a handle corresponds to a Virtio input device at
++  the EFI_PCI_IO_PROTOCOL level.
++**/
++STATIC
++BOOLEAN
++EFIAPI
++IsVirtioPciInput (
++  IN EFI_HANDLE    Handle,
++  IN CONST CHAR16  *ReportText
++  )
++{
++  return IsVirtioPci (Handle, ReportText, VIRTIO_SUBSYSTEM_INPUT);
++}
++
+ /**
+   This CALLBACK_FUNCTION attempts to connect a handle non-recursively, asking
+   the matching driver to produce all first-level child handles.
+@@ -565,6 +596,53 @@ AddOutput (
+     ));
+ }
+ 
++/**
++  This CALLBACK_FUNCTION retrieves the EFI_DEVICE_PATH_PROTOCOL from the
++  handle, and adds it to ConIn.
++**/
++STATIC
++VOID
++EFIAPI
++AddInput (
++  IN EFI_HANDLE    Handle,
++  IN CONST CHAR16  *ReportText
++  )
++{
++  EFI_STATUS                Status;
++  EFI_DEVICE_PATH_PROTOCOL  *DevicePath;
++
++  DevicePath = DevicePathFromHandle (Handle);
++  if (DevicePath == NULL) {
++    DEBUG ((
++      DEBUG_ERROR,
++      "%a: %s: handle %p: device path not found\n",
++      __func__,
++      ReportText,
++      Handle
++      ));
++    return;
++  }
++
++  Status = EfiBootManagerUpdateConsoleVariable (ConIn, DevicePath, NULL);
++  if (EFI_ERROR (Status)) {
++    DEBUG ((
++      DEBUG_ERROR,
++      "%a: %s: adding to ConIn: %r\n",
++      __func__,
++      ReportText,
++      Status
++      ));
++    return;
++  }
++
++  DEBUG ((
++    DEBUG_VERBOSE,
++    "%a: %s: added to ConIn\n",
++    __func__,
++    ReportText
++    ));
++}
++
+ /**
+   This CALLBACK_FUNCTION retrieves the EFI_DEVICE_PATH_PROTOCOL from
+   the handle, appends serial, uart and terminal nodes, finally updates
+@@ -819,6 +897,13 @@ PlatformBootManagerBeforeConsole (
+   //
+   FilterAndProcess (&gEfiGraphicsOutputProtocolGuid, NULL, AddOutput);
+ 
++  //
++  // Find all virtio-input PCI devices and connect them non-recursively,
++  // then add device paths to ConIn.
++  //
++  FilterAndProcess (&gEfiPciIoProtocolGuid, IsVirtioPciInput, Connect);
++  FilterAndProcess (&gVirtioDeviceProtocolGuid, IsVirtioInput, AddInput);
++
+   //
+   // Add the hardcoded short-form USB keyboard device path to ConIn.
+   //
+@@ -911,6 +996,13 @@ PlatformBootManagerBeforeConsole (
+   //
+   FilterAndProcess (&gEfiPciIoProtocolGuid, IsVirtioPciRng, Connect);
+ 
++  //
++  // Dispatch the drivers that depend on EFI_RNG_PROTOCOL, such as the network
++  // stack, so that connecting the boot devices from QEMU's boot order binds
++  // them, rather than only a later connect-all.
++  //
++  gDS->Dispatch ();
++
+   //
+   // Register Virtio serial devices as console.
+   //
+diff --git a/OvmfPkg/Library/PlatformBootManagerLibLight/PlatformBootManagerLib.inf b/OvmfPkg/Library/PlatformBootManagerLibLight/PlatformBootManagerLib.inf
+index 9e89556b1..ad08c1628 100644
+--- a/OvmfPkg/Library/PlatformBootManagerLibLight/PlatformBootManagerLib.inf
++++ b/OvmfPkg/Library/PlatformBootManagerLibLight/PlatformBootManagerLib.inf
+@@ -41,6 +41,7 @@
+   BootLogoLib
+   DebugLib
+   DevicePathLib
++  DxeServicesTableLib
+   MemoryAllocationLib
+   PcdLib
+   PlatformBmPrintScLib
 diff --git a/OvmfPkg/LoongArchVirt/LoongArchVirtQemu.dsc b/OvmfPkg/LoongArchVirt/LoongArchVirtQemu.dsc
-index 8f0ef8547..430b2480e 100644
+index bc930b246..ba508816e 100644
 --- a/OvmfPkg/LoongArchVirt/LoongArchVirtQemu.dsc
 +++ b/OvmfPkg/LoongArchVirt/LoongArchVirtQemu.dsc
-@@ -482,9 +482,9 @@
+@@ -48,9 +48,15 @@
+   DEFINE NETWORK_SNP_ENABLE              = FALSE
+   DEFINE NETWORK_TLS_ENABLE              = FALSE
+   DEFINE NETWORK_ALLOW_HTTP_CONNECTIONS  = TRUE
+-  DEFINE NETWORK_ISCSI_ENABLE            = FALSE
++  DEFINE NETWORK_ISCSI_ENABLE            = TRUE
++  DEFINE NETWORK_ISCSI_DEFAULT_ENABLE    = FALSE
+   DEFINE NETWORK_PXE_BOOT_ENABLE         = TRUE
+ 
++  #
++  # Device drivers
++  #
++!include OvmfPkg/Include/Dsc/OvmfOptHwDefines.dsc.inc
++
+ !include NetworkPkg/NetworkDefines.dsc.inc
+ ############################################################################
+ #
+@@ -206,7 +212,6 @@
+   PeCoffExtraActionLib             | MdePkg/Library/BasePeCoffExtraActionLibNull/BasePeCoffExtraActionLibNull.inf
+   DebugAgentLib                    | MdeModulePkg/Library/DebugAgentLibNull/DebugAgentLibNull.inf
+ 
+-  TpmPlatformHierarchyLib          | SecurityPkg/Library/PeiDxeTpmPlatformHierarchyLibNull/PeiDxeTpmPlatformHierarchyLib.inf
+   PlatformBmPrintScLib             | OvmfPkg/Library/PlatformBmPrintScLib/PlatformBmPrintScLib.inf
+   PlatformBootManagerLib           | OvmfPkg/Library/PlatformBootManagerLibLight/PlatformBootManagerLib.inf
+   BootLogoLib                      | MdeModulePkg/Library/BootLogoLib/BootLogoLib.inf
+@@ -445,7 +450,8 @@
+   #
+   gEfiMdeModulePkgTokenSpaceGuid.PcdAcpiExposedTableVersions           | 0x06
+ 
+-  gEfiMdeModulePkgTokenSpaceGuid.PcdBootManagerMenuFile                | { 0x21, 0xaa, 0x2c, 0x46, 0x14, 0x76, 0x03, 0x45, 0x83, 0x6e, 0x8a, 0xb6, 0xf4, 0x66, 0x23, 0x31 }
++  # Point to the MdeModulePkg/Application/BootManagerMenuApp/BootManagerMenuApp.inf
++  gEfiMdeModulePkgTokenSpaceGuid.PcdBootManagerMenuFile                | { 0xdc, 0x5b, 0xc2, 0xee, 0xf2, 0x67, 0x95, 0x4d, 0xb1, 0xd5, 0xf8, 0x1b, 0x20, 0x39, 0xd1, 0x1d }
+ 
+   #
+   # Network Pcds
+@@ -482,13 +488,9 @@
    gEfiMdeModulePkgTokenSpaceGuid.PcdFlashNvStorageFtwWorkingBase64     | 0
    gEfiMdeModulePkgTokenSpaceGuid.PcdEmuVariableNvStoreReserved         | 0
    gEfiMdeModulePkgTokenSpaceGuid.PcdPciDisableBusEnumeration           | FALSE
 -  gEfiMdeModulePkgTokenSpaceGuid.PcdVideoHorizontalResolution          | 800
 -  gEfiMdeModulePkgTokenSpaceGuid.PcdVideoVerticalResolution            | 600
 -  gEfiMdePkgTokenSpaceGuid.PcdPlatformBootTimeOut                      | 3
-+  gEfiMdeModulePkgTokenSpaceGuid.PcdVideoHorizontalResolution          | 1024
-+  gEfiMdeModulePkgTokenSpaceGuid.PcdVideoVerticalResolution            | 768
 +  gEfiMdePkgTokenSpaceGuid.PcdPlatformBootTimeOut                      | 0
  
-   # Set video resolution for text setup.
-   gEfiMdeModulePkgTokenSpaceGuid.PcdSetupVideoHorizontalResolution     | 640
-@@ -519,7 +519,7 @@
+-  # Set video resolution for text setup.
+-  gEfiMdeModulePkgTokenSpaceGuid.PcdSetupVideoHorizontalResolution     | 640
+-  gEfiMdeModulePkgTokenSpaceGuid.PcdSetupVideoVerticalResolution       | 480
++!include OvmfPkg/Include/Dsc/OvmfDisplayPcds.dsc.inc
+ 
+   gEfiMdeModulePkgTokenSpaceGuid.PcdSmbiosVersion                      | 0x0300
+   gEfiMdeModulePkgTokenSpaceGuid.PcdSmbiosDocRev                       | 0x0
+@@ -519,7 +521,7 @@
  !endif
  
  [PcdsDynamicHii]
@@ -177,11 +656,326 @@ index 8f0ef8547..430b2480e 100644
  !if $(TPM2_CONFIG_ENABLE) == TRUE
    gEfiSecurityPkgTokenSpaceGuid.PcdTcgPhysicalPresenceInterfaceVer|L"TCG2_VERSION"|gTcg2ConfigFormSetGuid|0x0|"1.3"|NV,BS
    gEfiSecurityPkgTokenSpaceGuid.PcdTpm2AcpiTableRev|L"TCG2_VERSION"|gTcg2ConfigFormSetGuid|0x8|3|NV,BS
+@@ -648,6 +650,7 @@
+   OvmfPkg/VirtioBlkDxe/VirtioBlk.inf
+   OvmfPkg/VirtioScsiDxe/VirtioScsi.inf
+   OvmfPkg/VirtioRngDxe/VirtioRng.inf
++  OvmfPkg/VirtioSerialDxe/VirtioSerial.inf
+ 
+   #
+   # Hash2 protocol, needed to dispatch TcpDxe
+@@ -662,6 +665,7 @@
+   MdeModulePkg/Universal/Disk/UnicodeCollation/EnglishDxe/EnglishDxe.inf
+   FatPkg/EnhancedFatDxe/Fat.inf
+   MdeModulePkg/Universal/Disk/UdfDxe/UdfDxe.inf
++  MdeModulePkg/Universal/Disk/RamDiskDxe/RamDiskDxe.inf
+   OvmfPkg/VirtioFsDxe/VirtioFsDxe.inf
+ 
+   #
+@@ -674,6 +678,7 @@
+   }
+   MdeModulePkg/Universal/DisplayEngineDxe/DisplayEngineDxe.inf
+   MdeModulePkg/Universal/SetupBrowserDxe/SetupBrowserDxe.inf
++  MdeModulePkg/Universal/DriverHealthManagerDxe/DriverHealthManagerDxe.inf
+   MdeModulePkg/Universal/BdsDxe/BdsDxe.inf
+   MdeModulePkg/Logo/LogoDxe.inf
+   MdeModulePkg/Universal/HiiDatabaseDxe/HiiDatabaseDxe.inf
+@@ -683,6 +688,7 @@
+       NULL|MdeModulePkg/Library/BootManagerUiLib/BootManagerUiLib.inf
+       NULL|MdeModulePkg/Library/BootMaintenanceManagerUiLib/BootMaintenanceManagerUiLib.inf
+   }
++  MdeModulePkg/Application/BootManagerMenuApp/BootManagerMenuApp.inf
+ 
+   OvmfPkg/QemuKernelLoaderFsDxe/QemuKernelLoaderFsDxe.inf {
+     <LibraryClasses>
+@@ -694,22 +700,7 @@
+   #
+ !include NetworkPkg/NetworkComponents.dsc.inc
+ 
+-!if $(NETWORK_ENABLE) == TRUE
+-!if $(NETWORK_PXE_BOOT_ENABLE) == TRUE
+-  NetworkPkg/UefiPxeBcDxe/UefiPxeBcDxe.inf {
+-    <LibraryClasses>
+-      NULL|OvmfPkg/Library/PxeBcPcdProducerLib/PxeBcPcdProducerLib.inf
+-  }
+-!endif
+-
+-!if $(NETWORK_TLS_ENABLE) == TRUE
+-  NetworkPkg/TlsAuthConfigDxe/TlsAuthConfigDxe.inf {
+-    <LibraryClasses>
+-      NULL|OvmfPkg/Library/TlsAuthConfigLib/TlsAuthConfigLib.inf
+-  }
+-!endif
+-!endif
+-  OvmfPkg/VirtioNetDxe/VirtioNet.inf
++!include OvmfPkg/Include/Dsc/NetworkComponents.dsc.inc
+ 
+   #
+   # SCSI
+@@ -724,10 +715,13 @@
+   MdeModulePkg/Bus/Ata/AtaBusDxe/AtaBusDxe.inf
+   MdeModulePkg/Bus/Ata/AtaAtapiPassThru/AtaAtapiPassThru.inf
+ 
++!include OvmfPkg/Include/Dsc/OvmfOptHwComponents.dsc.inc
++
+   #
+   # NVME Driver
+   #
+   MdeModulePkg/Bus/Pci/NvmExpressDxe/NvmExpressDxe.inf
++  MdeModulePkg/Bus/Pci/CxlDxe/CxlDxe.inf
+ 
+   #
+   # SMBIOS Support
+@@ -754,6 +748,7 @@
+     <LibraryClasses>
+       NULL|OvmfPkg/Fdt/FdtPciPcdProducerLib/FdtPciPcdProducerLib.inf
+   }
++  OvmfPkg/PciHotPlugInitDxe/PciHotPlugInit.inf
+   OvmfPkg/VirtioPciDeviceDxe/VirtioPciDeviceDxe.inf
+   OvmfPkg/Virtio10Dxe/Virtio10.inf
+ 
+@@ -776,17 +771,13 @@
+   OvmfPkg/QemuVideoDxe/QemuVideoDxe.inf
+   OvmfPkg/QemuRamfbDxe/QemuRamfbDxe.inf
+   OvmfPkg/VirtioGpuDxe/VirtioGpu.inf
++  OvmfPkg/VirtioInputDxe/VirtioInput.inf
+   OvmfPkg/PlatformDxe/Platform.inf
+ 
+   #
+   # Usb Support
+   #
+-  MdeModulePkg/Bus/Pci/UhciDxe/UhciDxe.inf
+-  MdeModulePkg/Bus/Pci/EhciDxe/EhciDxe.inf
+-  MdeModulePkg/Bus/Pci/XhciDxe/XhciDxe.inf
+-  MdeModulePkg/Bus/Usb/UsbBusDxe/UsbBusDxe.inf
+-  MdeModulePkg/Bus/Usb/UsbKbDxe/UsbKbDxe.inf
+-  MdeModulePkg/Bus/Usb/UsbMassStorageDxe/UsbMassStorageDxe.inf
++!include OvmfPkg/Include/Dsc/UsbComponents.dsc.inc
+ 
+   #
+   # ACPI Support
+@@ -804,10 +795,6 @@
+ !include OvmfPkg/Include/Dsc/ShellComponents.dsc.inc
+ 
+   MdeModulePkg/Universal/Acpi/FirmwarePerformanceDataTableDxe/FirmwarePerformanceDxe.inf
+-  ShellPkg/DynamicCommand/DpDynamicCommand/DpDynamicCommand.inf {
+-    <PcdsFixedAtBuild>
+-      gEfiShellPkgTokenSpaceGuid.PcdShellLibAutoInitialize|FALSE
+-  }
+ 
+   #
+   # TPM2 support
+@@ -827,4 +814,5 @@
+ !if $(TPM2_CONFIG_ENABLE) == TRUE
+   SecurityPkg/Tcg/Tcg2Config/Tcg2ConfigDxe.inf
+ !endif
++  MdeModulePkg/Universal/SmbiosMeasurementDxe/SmbiosMeasurementDxe.inf
+ !endif
+diff --git a/OvmfPkg/LoongArchVirt/LoongArchVirtQemu.fdf b/OvmfPkg/LoongArchVirt/LoongArchVirtQemu.fdf
+index bd1d75a48..a08041d30 100644
+--- a/OvmfPkg/LoongArchVirt/LoongArchVirtQemu.fdf
++++ b/OvmfPkg/LoongArchVirt/LoongArchVirtQemu.fdf
+@@ -106,6 +106,7 @@ INF  UefiCpuPkg/CpuMmio2Dxe/CpuMmio2Dxe.inf
+ INF  EmbeddedPkg/Drivers/FdtClientDxe/FdtClientDxe.inf
+ INF  MdeModulePkg/Bus/Pci/PciHostBridgeDxe/PciHostBridgeDxe.inf
+ INF  MdeModulePkg/Bus/Pci/PciBusDxe/PciBusDxe.inf
++INF  OvmfPkg/PciHotPlugInitDxe/PciHotPlugInit.inf
+ INF  OvmfPkg/VirtioPciDeviceDxe/VirtioPciDeviceDxe.inf
+ INF  OvmfPkg/Virtio10Dxe/Virtio10.inf
+ 
+@@ -115,7 +116,10 @@ INF  OvmfPkg/Virtio10Dxe/Virtio10.inf
+ INF  OvmfPkg/VirtioBlkDxe/VirtioBlk.inf
+ INF  OvmfPkg/VirtioScsiDxe/VirtioScsi.inf
+ INF  OvmfPkg/VirtioRngDxe/VirtioRng.inf
++INF  OvmfPkg/VirtioSerialDxe/VirtioSerial.inf
++!if $(NETWORK_ENABLE) == TRUE
+ INF  OvmfPkg/VirtioNetDxe/VirtioNet.inf
++!endif
+ 
+ #
+ # Hash2 protocol, needed to dispatch TcpDxe
+@@ -138,6 +142,7 @@ INF  MdeModulePkg/Universal/Console/GraphicsConsoleDxe/GraphicsConsoleDxe.inf
+ INF  OvmfPkg/QemuVideoDxe/QemuVideoDxe.inf
+ INF  OvmfPkg/QemuRamfbDxe/QemuRamfbDxe.inf
+ INF  OvmfPkg/VirtioGpuDxe/VirtioGpu.inf
++INF  OvmfPkg/VirtioInputDxe/VirtioInput.inf
+ INF  OvmfPkg/PlatformDxe/Platform.inf
+ 
+ #
+@@ -153,10 +158,13 @@ INF  MdeModulePkg/Bus/Pci/SataControllerDxe/SataControllerDxe.inf
+ INF  MdeModulePkg/Bus/Ata/AtaBusDxe/AtaBusDxe.inf
+ INF  MdeModulePkg/Bus/Ata/AtaAtapiPassThru/AtaAtapiPassThru.inf
+ 
++!include OvmfPkg/Include/Fdf/OvmfOptHw.fdf.inc
++
+ #
+ # NVME
+ #
+ INF MdeModulePkg/Bus/Pci/NvmExpressDxe/NvmExpressDxe.inf
++INF MdeModulePkg/Bus/Pci/CxlDxe/CxlDxe.inf
+ 
+ #
+ # Usb Support
+@@ -166,6 +174,7 @@ INF  MdeModulePkg/Bus/Pci/EhciDxe/EhciDxe.inf
+ INF  MdeModulePkg/Bus/Pci/XhciDxe/XhciDxe.inf
+ INF  MdeModulePkg/Bus/Usb/UsbBusDxe/UsbBusDxe.inf
+ INF  MdeModulePkg/Bus/Usb/UsbKbDxe/UsbKbDxe.inf
++INF  MdeModulePkg/Bus/Usb/UsbMouseDxe/UsbMouseDxe.inf
+ INF  MdeModulePkg/Bus/Usb/UsbMassStorageDxe/UsbMassStorageDxe.inf
+ 
+ #
+@@ -175,9 +184,11 @@ INF  MdeModulePkg/Universal/HiiDatabaseDxe/HiiDatabaseDxe.inf
+ INF  MdeModulePkg/Universal/DevicePathDxe/DevicePathDxe.inf
+ INF  MdeModulePkg/Universal/DisplayEngineDxe/DisplayEngineDxe.inf
+ INF  MdeModulePkg/Universal/SetupBrowserDxe/SetupBrowserDxe.inf
++INF  MdeModulePkg/Universal/DriverHealthManagerDxe/DriverHealthManagerDxe.inf
+ INF  MdeModulePkg/Universal/BdsDxe/BdsDxe.inf
+ INF  MdeModulePkg/Logo/LogoDxe.inf
+ INF  MdeModulePkg/Application/UiApp/UiApp.inf
++INF  MdeModulePkg/Application/BootManagerMenuApp/BootManagerMenuApp.inf
+ INF  OvmfPkg/QemuKernelLoaderFsDxe/QemuKernelLoaderFsDxe.inf
+ 
+ #
+@@ -205,21 +216,19 @@ INF  MdeModulePkg/Universal/Disk/PartitionDxe/PartitionDxe.inf
+ INF  MdeModulePkg/Universal/Disk/UnicodeCollation/EnglishDxe/EnglishDxe.inf
+ INF  FatPkg/EnhancedFatDxe/Fat.inf
+ INF  MdeModulePkg/Universal/Disk/UdfDxe/UdfDxe.inf
++INF  MdeModulePkg/Universal/Disk/RamDiskDxe/RamDiskDxe.inf
+ INF  OvmfPkg/VirtioFsDxe/VirtioFsDxe.inf
+ 
+-#
+-#Boot OS
+-#
+-INF ShellPkg/Application/Shell/Shell.inf
++!include OvmfPkg/Include/Fdf/ShellDxe.fdf.inc
+ 
+ INF MdeModulePkg/Universal/Acpi/FirmwarePerformanceDataTableDxe/FirmwarePerformanceDxe.inf
+-INF ShellPkg/DynamicCommand/DpDynamicCommand/DpDynamicCommand.inf
+ 
+ #
+ # TPM support
+ #
+ !if $(TPM2_ENABLE) == TRUE
+   INF SecurityPkg/Tcg/Tcg2Dxe/Tcg2Dxe.inf
++  INF MdeModulePkg/Universal/SmbiosMeasurementDxe/SmbiosMeasurementDxe.inf
+ !if $(TPM2_CONFIG_ENABLE) == TRUE
+   INF SecurityPkg/Tcg/Tcg2Config/Tcg2ConfigDxe.inf
+ !endif
+diff --git a/OvmfPkg/OvmfPkgX64.fdf b/OvmfPkg/OvmfPkgX64.fdf
+index 3d1d33ed1..bc048f213 100644
+--- a/OvmfPkg/OvmfPkgX64.fdf
++++ b/OvmfPkg/OvmfPkgX64.fdf
+@@ -302,6 +302,7 @@ INF  MdeModulePkg/Bus/Pci/EhciDxe/EhciDxe.inf
+ INF  MdeModulePkg/Bus/Pci/XhciDxe/XhciDxe.inf
+ INF  MdeModulePkg/Bus/Usb/UsbBusDxe/UsbBusDxe.inf
+ INF  MdeModulePkg/Bus/Usb/UsbKbDxe/UsbKbDxe.inf
++INF  MdeModulePkg/Bus/Usb/UsbMouseDxe/UsbMouseDxe.inf
+ INF  MdeModulePkg/Bus/Usb/UsbMassStorageDxe/UsbMassStorageDxe.inf
+ 
+ INF  OvmfPkg/QemuVideoDxe/QemuVideoDxe.inf
+diff --git a/OvmfPkg/RiscVVirt/PlatformPei/PlatformPeim.c b/OvmfPkg/RiscVVirt/PlatformPei/PlatformPeim.c
+index fa157b416..a409207d5 100644
+--- a/OvmfPkg/RiscVVirt/PlatformPei/PlatformPeim.c
++++ b/OvmfPkg/RiscVVirt/PlatformPei/PlatformPeim.c
+@@ -66,6 +66,7 @@ FindInstallPeiMemory (
+   VOID                         *HobList;
+   EFI_PEI_HOB_POINTERS         Hob;
+   EFI_PHYSICAL_ADDRESS         PeiMemoryBase;
++  EFI_STATUS                   Status;
+ 
+   // Get the HOB list from PEI services
+   HobList = GetHobList ();
+@@ -93,7 +94,8 @@ FindInstallPeiMemory (
+   }
+ 
+   ASSERT (PeiMemoryBase != 0);
+-  ASSERT_EFI_ERROR (PeiServicesInstallPeiMemory (PeiMemoryBase, PEI_MEMORY_SIZE));
++  Status = PeiServicesInstallPeiMemory (PeiMemoryBase, PEI_MEMORY_SIZE);
++  ASSERT_EFI_ERROR (Status);
+ }
+ 
+ /**
+@@ -118,10 +120,12 @@ SetupTPMResources (
+   CONST UINT32  *RangesProp;
+   UINT64        TpmBase;
+   UINT64        TpmBaseSize;
++  EFI_STATUS    Status;
+ 
+   //
+   // Empty TpmBaseSize indicates no TPM found.
+   //
++  TpmBase     = 0;
+   TpmBaseSize = 0;
+ 
+   //
+@@ -216,7 +220,8 @@ SetupTPMResources (
+       ALIGN_VALUE (TpmBaseSize, EFI_PAGE_SIZE)
+       );
+ 
+-    ASSERT_EFI_ERROR ((EFI_STATUS)PcdSet64S (PcdTpmBaseAddress, TpmBase));
++    Status = (EFI_STATUS)PcdSet64S (PcdTpmBaseAddress, TpmBase);
++    ASSERT_EFI_ERROR (Status);
+     PeiServicesInstallPpi (&mTpm2DiscoveredPpi);
+   }
+ }
 diff --git a/OvmfPkg/RiscVVirt/RiscVVirtQemu.dsc b/OvmfPkg/RiscVVirt/RiscVVirtQemu.dsc
-index acbf161f0..8ffc2b19e 100644
+index acbf161f0..9b6d16de5 100644
 --- a/OvmfPkg/RiscVVirt/RiscVVirtQemu.dsc
 +++ b/OvmfPkg/RiscVVirt/RiscVVirtQemu.dsc
-@@ -259,7 +259,7 @@
+@@ -56,7 +56,8 @@
+   DEFINE NETWORK_SNP_ENABLE             = FALSE
+   DEFINE NETWORK_TLS_ENABLE             = FALSE
+   DEFINE NETWORK_ALLOW_HTTP_CONNECTIONS = TRUE
+-  DEFINE NETWORK_ISCSI_ENABLE           = FALSE
++  DEFINE NETWORK_ISCSI_ENABLE           = TRUE
++  DEFINE NETWORK_ISCSI_DEFAULT_ENABLE   = FALSE
+   DEFINE NETWORK_PXE_BOOT_ENABLE        = TRUE
+ 
+ !if $(NETWORK_SNP_ENABLE) == TRUE
+@@ -69,6 +70,11 @@
+   DEFINE CAPSULE_ENABLE          = FALSE
+   DEFINE FMP_SYSTEM_DEVICE       = BCBACAC2-1D1D-4C14-89A3-5E27496B702D
+ 
++  #
++  # Device drivers
++  #
++!include OvmfPkg/Include/Dsc/OvmfOptHwDefines.dsc.inc
++
+ !include MdePkg/MdeLibs.dsc.inc
+ !include NetworkPkg/Network.dsc.inc
+ 
+@@ -120,7 +126,8 @@
+ 
+   CapsuleLib|MdeModulePkg/Library/DxeCapsuleLibNull/DxeCapsuleLibNull.inf
+   BootLogoLib|MdeModulePkg/Library/BootLogoLib/BootLogoLib.inf
+-  PlatformBootManagerLib|OvmfPkg/RiscVVirt/Library/PlatformBootManagerLib/PlatformBootManagerLib.inf
++  PlatformBootManagerLib|OvmfPkg/Library/PlatformBootManagerLibLight/PlatformBootManagerLib.inf
++  PlatformBootManagerCommonLib|OvmfPkg/Library/PlatformBootManagerCommonLib/PlatformBootManagerCommonLib.inf
+   PlatformBmPrintScLib|OvmfPkg/Library/PlatformBmPrintScLib/PlatformBmPrintScLib.inf
+   CustomizedDisplayLib|MdeModulePkg/Library/CustomizedDisplayLib/CustomizedDisplayLib.inf
+   FrameBufferBltLib|MdeModulePkg/Library/FrameBufferBltLib/FrameBufferBltLib.inf
+@@ -212,6 +219,10 @@
+ 
+   gEfiMdeModulePkgTokenSpaceGuid.PcdTurnOffUsbLegacySupport|TRUE
+ 
++!if $(SECURE_BOOT_ENABLE) == TRUE
++  gEfiMdeModulePkgTokenSpaceGuid.PcdRequireSelfSignedPk|FALSE
++!endif
++
+ !if $(QEMU_PV_VARS) == TRUE
+   gUefiOvmfPkgTokenSpaceGuid.PcdQemuVarsRequire|TRUE
+   gEfiMdeModulePkgTokenSpaceGuid.PcdEnableVariableRuntimeCache|FALSE
+@@ -241,7 +252,8 @@
+   gEfiMdeModulePkgTokenSpaceGuid.PcdSerialRegisterStride|1
+ 
+   gEfiMdeModulePkgTokenSpaceGuid.PcdResetOnMemoryTypeInformationChange|FALSE
+-  gEfiMdeModulePkgTokenSpaceGuid.PcdBootManagerMenuFile|{ 0x21, 0xaa, 0x2c, 0x46, 0x14, 0x76, 0x03, 0x45, 0x83, 0x6e, 0x8a, 0xb6, 0xf4, 0x66, 0x23, 0x31 }
++  # Point to the MdeModulePkg/Application/BootManagerMenuApp/BootManagerMenuApp.inf
++  gEfiMdeModulePkgTokenSpaceGuid.PcdBootManagerMenuFile|{ 0xdc, 0x5b, 0xc2, 0xee, 0xf2, 0x67, 0x95, 0x4d, 0xb1, 0xd5, 0xf8, 0x1b, 0x20, 0x39, 0xd1, 0x1d }
+ 
+ !if $(SECURE_BOOT_ENABLE) == TRUE
+   # override the default values from SecurityPkg to ensure images from all sources are verified in secure boot
+@@ -259,7 +271,7 @@
    gEfiMdeModulePkgTokenSpaceGuid.PcdSmbiosEntryPointProvideMethod|0x2
  
  [PcdsDynamicDefault.common]
@@ -190,7 +984,7 @@ index acbf161f0..8ffc2b19e 100644
  
    ## If TRUE, OvmfPkg/AcpiPlatformDxe will not wait for PCI
    #  enumeration to complete before installing ACPI tables.
-@@ -313,7 +313,7 @@
+@@ -313,7 +325,7 @@
    gEfiSecurityPkgTokenSpaceGuid.PcdTpm2AcpiTableRev|L"TCG2_VERSION"|gTcg2ConfigFormSetGuid|0x8|3|NV,BS
  !endif
  
@@ -199,6 +993,150 @@ index acbf161f0..8ffc2b19e 100644
  
  ################################################################################
  #
+@@ -453,8 +465,8 @@
+   OvmfPkg/Fdt/HighMemDxe/HighMemDxe.inf
+   OvmfPkg/VirtioBlkDxe/VirtioBlk.inf
+   OvmfPkg/VirtioScsiDxe/VirtioScsi.inf
+-  OvmfPkg/VirtioNetDxe/VirtioNet.inf
+   OvmfPkg/VirtioRngDxe/VirtioRng.inf
++  OvmfPkg/VirtioSerialDxe/VirtioSerial.inf
+ 
+   #
+   # Hash2 protocol, needed to dispatch TcpDxe
+@@ -491,26 +503,13 @@
+       NULL|MdeModulePkg/Library/BootManagerUiLib/BootManagerUiLib.inf
+       NULL|MdeModulePkg/Library/BootMaintenanceManagerUiLib/BootMaintenanceManagerUiLib.inf
+   }
++  MdeModulePkg/Application/BootManagerMenuApp/BootManagerMenuApp.inf
+   OvmfPkg/QemuKernelLoaderFsDxe/QemuKernelLoaderFsDxe.inf {
+     <LibraryClasses>
+       NULL|OvmfPkg/Library/BlobVerifierLibNull/BlobVerifierLibNull.inf
+   }
+ 
+-!if $(NETWORK_ENABLE) == TRUE
+-!if $(NETWORK_PXE_BOOT_ENABLE) == TRUE
+-  NetworkPkg/UefiPxeBcDxe/UefiPxeBcDxe.inf {
+-    <LibraryClasses>
+-      NULL|OvmfPkg/Library/PxeBcPcdProducerLib/PxeBcPcdProducerLib.inf
+-  }
+-!endif
+-
+-!if $(NETWORK_TLS_ENABLE) == TRUE
+-  NetworkPkg/TlsAuthConfigDxe/TlsAuthConfigDxe.inf {
+-    <LibraryClasses>
+-      NULL|OvmfPkg/Library/TlsAuthConfigLib/TlsAuthConfigLib.inf
+-  }
+-!endif
+-!endif
++!include OvmfPkg/Include/Dsc/NetworkComponents.dsc.inc
+ 
+   #
+   # SCSI Bus and Disk Driver
+@@ -525,10 +524,13 @@
+   MdeModulePkg/Bus/Ata/AtaBusDxe/AtaBusDxe.inf
+   MdeModulePkg/Bus/Ata/AtaAtapiPassThru/AtaAtapiPassThru.inf
+ 
++!include OvmfPkg/Include/Dsc/OvmfOptHwComponents.dsc.inc
++
+   #
+   # NVME Driver
+   #
+   MdeModulePkg/Bus/Pci/NvmExpressDxe/NvmExpressDxe.inf
++  MdeModulePkg/Bus/Pci/CxlDxe/CxlDxe.inf
+ 
+   #
+   # SMBIOS Support
+@@ -561,17 +563,13 @@
+   OvmfPkg/QemuVideoDxe/QemuVideoDxe.inf
+   OvmfPkg/QemuRamfbDxe/QemuRamfbDxe.inf
+   OvmfPkg/VirtioGpuDxe/VirtioGpu.inf
++  OvmfPkg/VirtioInputDxe/VirtioInput.inf
+   OvmfPkg/PlatformDxe/Platform.inf
+ 
+   #
+   # USB Support
+   #
+-  MdeModulePkg/Bus/Pci/UhciDxe/UhciDxe.inf
+-  MdeModulePkg/Bus/Pci/EhciDxe/EhciDxe.inf
+-  MdeModulePkg/Bus/Pci/XhciDxe/XhciDxe.inf
+-  MdeModulePkg/Bus/Usb/UsbBusDxe/UsbBusDxe.inf
+-  MdeModulePkg/Bus/Usb/UsbKbDxe/UsbKbDxe.inf
+-  MdeModulePkg/Bus/Usb/UsbMassStorageDxe/UsbMassStorageDxe.inf
++!include OvmfPkg/Include/Dsc/UsbComponents.dsc.inc
+ 
+   #
+   # TPM2 support
+@@ -591,6 +589,7 @@
+ !if $(TPM2_CONFIG_ENABLE) == TRUE
+   SecurityPkg/Tcg/Tcg2Config/Tcg2ConfigDxe.inf
+ !endif
++  MdeModulePkg/Universal/SmbiosMeasurementDxe/SmbiosMeasurementDxe.inf
+ !endif
+ 
+   #
+diff --git a/OvmfPkg/RiscVVirt/RiscVVirtQemu.fdf b/OvmfPkg/RiscVVirt/RiscVVirtQemu.fdf
+index cbba3d852..9b8b02dbb 100644
+--- a/OvmfPkg/RiscVVirt/RiscVVirtQemu.fdf
++++ b/OvmfPkg/RiscVVirt/RiscVVirtQemu.fdf
+@@ -150,9 +150,12 @@ INF  MdeModulePkg/Universal/StatusCodeHandler/RuntimeDxe/StatusCodeHandlerRuntim
+ # Platform Driver
+ #
+ INF  OvmfPkg/VirtioBlkDxe/VirtioBlk.inf
++!if $(NETWORK_ENABLE) == TRUE
+ INF  OvmfPkg/VirtioNetDxe/VirtioNet.inf
++!endif
+ INF  OvmfPkg/VirtioScsiDxe/VirtioScsi.inf
+ INF  OvmfPkg/VirtioRngDxe/VirtioRng.inf
++INF  OvmfPkg/VirtioSerialDxe/VirtioSerial.inf
+ 
+ #
+ # Hash2 protocol, needed to dispatch TcpDxe
+@@ -169,6 +172,7 @@ INF  MdeModulePkg/Universal/SetupBrowserDxe/SetupBrowserDxe.inf
+ INF  MdeModulePkg/Universal/DriverHealthManagerDxe/DriverHealthManagerDxe.inf
+ INF  MdeModulePkg/Universal/BdsDxe/BdsDxe.inf
+ INF  MdeModulePkg/Application/UiApp/UiApp.inf
++INF  MdeModulePkg/Application/BootManagerMenuApp/BootManagerMenuApp.inf
+ INF  OvmfPkg/QemuKernelLoaderFsDxe/QemuKernelLoaderFsDxe.inf
+ 
+ #
+@@ -189,10 +193,13 @@ INF  MdeModulePkg/Bus/Pci/SataControllerDxe/SataControllerDxe.inf
+ INF  MdeModulePkg/Bus/Ata/AtaBusDxe/AtaBusDxe.inf
+ INF  MdeModulePkg/Bus/Ata/AtaAtapiPassThru/AtaAtapiPassThru.inf
+ 
++!include OvmfPkg/Include/Fdf/OvmfOptHw.fdf.inc
++
+ #
+ # NVME Driver
+ #
+ INF  MdeModulePkg/Bus/Pci/NvmExpressDxe/NvmExpressDxe.inf
++INF  MdeModulePkg/Bus/Pci/CxlDxe/CxlDxe.inf
+ 
+ #
+ # SMBIOS Support
+@@ -225,6 +232,7 @@ INF  OvmfPkg/Virtio10Dxe/Virtio10.inf
+ INF  OvmfPkg/QemuVideoDxe/QemuVideoDxe.inf
+ INF  OvmfPkg/QemuRamfbDxe/QemuRamfbDxe.inf
+ INF  OvmfPkg/VirtioGpuDxe/VirtioGpu.inf
++INF  OvmfPkg/VirtioInputDxe/VirtioInput.inf
+ INF  OvmfPkg/PlatformDxe/Platform.inf
+ 
+ #
+@@ -235,6 +243,7 @@ INF  MdeModulePkg/Bus/Pci/EhciDxe/EhciDxe.inf
+ INF  MdeModulePkg/Bus/Pci/XhciDxe/XhciDxe.inf
+ INF  MdeModulePkg/Bus/Usb/UsbBusDxe/UsbBusDxe.inf
+ INF  MdeModulePkg/Bus/Usb/UsbKbDxe/UsbKbDxe.inf
++INF  MdeModulePkg/Bus/Usb/UsbMouseDxe/UsbMouseDxe.inf
+ INF  MdeModulePkg/Bus/Usb/UsbMassStorageDxe/UsbMassStorageDxe.inf
+ 
+ #
+@@ -242,6 +251,7 @@ INF  MdeModulePkg/Bus/Usb/UsbMassStorageDxe/UsbMassStorageDxe.inf
+ #
+ !if $(TPM2_ENABLE) == TRUE
+   INF SecurityPkg/Tcg/Tcg2Dxe/Tcg2Dxe.inf
++  INF MdeModulePkg/Universal/SmbiosMeasurementDxe/SmbiosMeasurementDxe.inf
+ !if $(TPM2_CONFIG_ENABLE) == TRUE
+   INF SecurityPkg/Tcg/Tcg2Config/Tcg2ConfigDxe.inf
+ !endif
 diff --git a/UefiPayloadPkg/UefiPayloadPkg.dsc b/UefiPayloadPkg/UefiPayloadPkg.dsc
 index 34fb690d1..aed2c1c66 100644
 --- a/UefiPayloadPkg/UefiPayloadPkg.dsc
