@@ -71,7 +71,7 @@ jobs:
           GCC_VERSION=16.2.0
 
           for i in aarch64 i386 loongarch64 riscv64 x86_64; do
-              wget https://mirrors.edge.kernel.org/pub/tools/crosstool/files/bin/x86_64/$GCC_VERSION/x86_64-gcc-$GCC_VERSION-nolibc-$i-linux.tar.gz
+              wget --tries=5 --waitretry=10 --retry-connrefused --retry-on-host-error https://mirrors.edge.kernel.org/pub/tools/crosstool/files/bin/x86_64/$GCC_VERSION/x86_64-gcc-$GCC_VERSION-nolibc-$i-linux.tar.gz
               tar -xf x86_64-gcc-$GCC_VERSION-nolibc-$i-linux.tar.gz
               export PATH="$(pwd -P)"/gcc-$GCC_VERSION-nolibc/$i-linux/bin:"$PATH"
           done
@@ -126,12 +126,13 @@ jobs:
           # SMM, without which OVMF refuses to keep Secure Boot variables in
           # flash. The Secure Boot image also has TPM 2.0 support. RISC-V
           # boots through PEI like the other platforms, which is also the
-          # only path on which it probes for a TPM.
+          # only path on which it probes for a TPM. AArch64 turns on the MP
+          # Services protocol, which x86 and LoongArch always provide.
 
-          build -b RELEASE -t GCC -a AARCH64 -p ArmVirtPkg/ArmVirtQemu.dsc
+          build -b RELEASE -t GCC -a AARCH64 -p ArmVirtPkg/ArmVirtQemu.dsc -D MP_SERVICES_ENABLE=TRUE
           cp Build/ArmVirtQemu-AArch64/RELEASE_GCC/FV/QEMU_EFI.fd  output/ovmf-code-aarch64.fd
           cp Build/ArmVirtQemu-AArch64/RELEASE_GCC/FV/QEMU_VARS.fd output/ovmf-vars-aarch64.fd
-          build -b RELEASE -t GCC -a AARCH64 -p ArmVirtPkg/ArmVirtQemu.dsc -D SECURE_BOOT_ENABLE=TRUE -D TPM2_ENABLE=TRUE -D TPM2_CONFIG_ENABLE=TRUE
+          build -b RELEASE -t GCC -a AARCH64 -p ArmVirtPkg/ArmVirtQemu.dsc -D SECURE_BOOT_ENABLE=TRUE -D TPM2_ENABLE=TRUE -D TPM2_CONFIG_ENABLE=TRUE -D MP_SERVICES_ENABLE=TRUE
           cp Build/ArmVirtQemu-AArch64/RELEASE_GCC/FV/QEMU_EFI.fd  output/ovmf-code-aarch64-secboot.fd
           cp Build/ArmVirtQemu-AArch64/RELEASE_GCC/FV/QEMU_VARS.fd output/ovmf-vars-aarch64-secboot.fd
 

@@ -92,10 +92,10 @@ index 80aae96c3..d97a6aad4 100644
  /*
   * STATUS RETURN CODES.
 diff --git a/OvmfPkg/Library/BaseMemEncryptSevLib/DxeMemEncryptSevLib.inf b/OvmfPkg/Library/BaseMemEncryptSevLib/DxeMemEncryptSevLib.inf
-index 88067081d..312ee73e5 100644
+index 2d783ede8..37f9dde85 100644
 --- a/OvmfPkg/Library/BaseMemEncryptSevLib/DxeMemEncryptSevLib.inf
 +++ b/OvmfPkg/Library/BaseMemEncryptSevLib/DxeMemEncryptSevLib.inf
-@@ -20,7 +20,7 @@
+@@ -21,7 +21,7 @@
  # The following information is for reference only and not required by the build
  # tools.
  #
@@ -104,16 +104,16 @@ index 88067081d..312ee73e5 100644
  #
  
  [Packages]
-@@ -32,6 +32,8 @@
- [Sources]
+@@ -34,6 +34,8 @@
    DxeMemEncryptSevLibInternal.c
    PeiDxeMemEncryptSevLibInternal.c
+   PeiDxeMemEncryptSevLibInternal.h
 +
 +[Sources.X64]
    X64/DxeSnpSystemRamValidate.c
    X64/MemEncryptSevLib.c
    X64/PeiDxeVirtualMemory.c
-@@ -39,6 +41,9 @@
+@@ -41,6 +43,9 @@
    X64/VirtualMemory.c
    X64/VirtualMemory.h
  
@@ -538,10 +538,10 @@ index 950b92184..dedb5a159 100644
 +  gEfiXenInfoGuid
 diff --git a/OvmfPkg/OvmfPkgIa32.dsc b/OvmfPkg/OvmfPkgIa32.dsc
 new file mode 100644
-index 000000000..4c11d8938
+index 000000000..62954d17b
 --- /dev/null
 +++ b/OvmfPkg/OvmfPkgIa32.dsc
-@@ -0,0 +1,986 @@
+@@ -0,0 +1,987 @@
 +## @file
 +#  EFI/Framework Open Virtual Machine Firmware (OVMF) platform
 +#
@@ -1355,6 +1355,7 @@ index 000000000..4c11d8938
 +  OvmfPkg/VirtioSerialDxe/VirtioSerial.inf
 +  OvmfPkg/VirtioInputDxe/VirtioInput.inf
 +  MdeModulePkg/Universal/WatchdogTimerDxe/WatchdogTimer.inf
++  MdeModulePkg/Universal/TimestampDxe/TimestampDxe.inf
 +  MdeModulePkg/Universal/MonotonicCounterRuntimeDxe/MonotonicCounterRuntimeDxe.inf
 +  MdeModulePkg/Universal/CapsuleRuntimeDxe/CapsuleRuntimeDxe.inf
 +  MdeModulePkg/Universal/Console/ConPlatformDxe/ConPlatformDxe.inf
@@ -1530,10 +1531,10 @@ index 000000000..4c11d8938
 +!endif
 diff --git a/OvmfPkg/OvmfPkgIa32.fdf b/OvmfPkg/OvmfPkgIa32.fdf
 new file mode 100644
-index 000000000..2f3dfb323
+index 000000000..e92c7818f
 --- /dev/null
 +++ b/OvmfPkg/OvmfPkgIa32.fdf
-@@ -0,0 +1,477 @@
+@@ -0,0 +1,478 @@
 +## @file
 +#  Open Virtual Machine Firmware: FDF
 +#
@@ -1743,6 +1744,7 @@ index 000000000..2f3dfb323
 +!endif
 +
 +INF  MdeModulePkg/Universal/WatchdogTimerDxe/WatchdogTimer.inf
++INF  MdeModulePkg/Universal/TimestampDxe/TimestampDxe.inf
 +INF  MdeModulePkg/Universal/MonotonicCounterRuntimeDxe/MonotonicCounterRuntimeDxe.inf
 +INF  MdeModulePkg/Universal/CapsuleRuntimeDxe/CapsuleRuntimeDxe.inf
 +INF  MdeModulePkg/Universal/Console/ConPlatformDxe/ConPlatformDxe.inf
@@ -2101,10 +2103,10 @@ index f69b8e60b..5f2760148 100644
  
  [Depex]
 diff --git a/OvmfPkg/XenPlatformPei/MemDetect.c b/OvmfPkg/XenPlatformPei/MemDetect.c
-index 516f9dc45..e552e7a55 100644
+index 7eaa655bc..81d823d8b 100644
 --- a/OvmfPkg/XenPlatformPei/MemDetect.c
 +++ b/OvmfPkg/XenPlatformPei/MemDetect.c
-@@ -215,6 +215,16 @@ GetPeiMemoryCap (
+@@ -211,6 +211,16 @@ GetPeiMemoryCap (
    UINT32   PdpEntries;
    UINTN    TotalPages;
  
